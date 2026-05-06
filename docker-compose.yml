@@ -5,9 +5,16 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./:/app
+      - db_data:/app/db
+    restart: unless-stopped
+
   collector:
     build: .
-    command: ["python", "collector/run.py", "--date", "$(date +%F)", "--headless"]
+    command: ["/bin/sh", "-c", "echo '10 7 * * * cd /app && python3 collector/run.py --headless >> /app/logs/collector.log 2>&1' | crontab - && crond -f -l 2"]
     volumes:
-      - ./:/app
+      - db_data:/app/db
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+volumes:
+  db_data:
