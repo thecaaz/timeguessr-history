@@ -24,7 +24,7 @@ def index(request: Request):
     conn = dao.get_conn(DB_PATH)
     games = dao.get_games(conn)
     conn.close()
-    return templates.TemplateResponse("index.html", {"request": request, "games": games})
+    return templates.TemplateResponse(request, "index.html", {"games": games})
 
 
 @app.get("/game/{date}", response_class=HTMLResponse)
@@ -36,4 +36,4 @@ def game_view(request: Request, date: str):
         raise HTTPException(status_code=404, detail="Game not found")
     screenshots = dao.get_screenshots_for_game(conn, game["id"])
     conn.close()
-    return templates.TemplateResponse("game.html", {"request": request, "date": date, "screenshots": screenshots})
+    return templates.TemplateResponse(request, "game.html", {"date": date, "screenshots": screenshots})
