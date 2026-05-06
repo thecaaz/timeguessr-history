@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Collector stub that opens timeguessr and attempts to collect round image URLs and metadata.
+"""Collector: opens timeguessr.com, reads daily round data from localStorage, saves to DB.
 
-This is a best-effort prototype: selectors and interactions will likely need tuning
-against the live site. The script gracefully exits if Playwright is not installed.
+No game-playing required — the full dailyArray (URL, Year, Location, Description,
+License, Country, StreetView, etc.) is populated in localStorage as soon as the
+daily game loads.
 """
 
 import argparse
@@ -12,14 +13,11 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-# When executed directly (python3 collector/run.py) the package imports may fail
-# because the repository root isn't on sys.path. Ensure the repo root is present
-# so `from collector.config` and `from db import dao` work when run as a script.
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from collector.config import BASE_URL, ROUNDS, DB_PATH, HEADLESS_DEFAULT
+from collector.config import BASE_URL, DB_PATH, HEADLESS_DEFAULT
 from db import dao
 
 
@@ -32,14 +30,35 @@ def parse_args(argv=None):
     parser.set_defaults(headless=HEADLESS_DEFAULT)
     return parser.parse_args(argv)
 
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+
+async def wait_for_daily_array(page) -> list:
+    """Poll localStorage every 500 ms until dailyArray contains objects (up to ~20 s)."""
+    for _ in range(40):
+        result = await page.evaluate("""
+        () => {
+            const raw = localStorage.getItem('dailyArray');
+            if (!raw) return null;
+            try {
+                const arr = JSON.parse(raw);
+                // The site appends a sentinel 0 at the end — filter it out
+                return arr.filter(e => e && typeof e === 'object');
+            } catch(e) { return null; }
+        }
+        """)
+        if result and len(result) > 0:
+            return result
+        await page.wait_for_timeout(500)
+    return []
 
 
 async def collect_for_date(date_str: str, headless: bool = HEADLESS_DEFAULT, dry_run: bool = False) -> int:
     try:
         from playwright.async_api import async_playwright
     except Exception:
-        logging.error("Playwright is not installed. Install with: pip install playwright; python -m playwright install")
+        logging.error("Playwright is not installed. Install with: pip install playwright; python3 -m playwright install")
         return 2
 
     async with async_playwright() as p:
@@ -48,221 +67,104 @@ async def collect_for_date(date_str: str, headless: bool = HEADLESS_DEFAULT, dry
         logging.info("Opening %s", BASE_URL)
         await page.goto(BASE_URL, timeout=60000)
 
-        # Best-effort: try to click a daily link/button if present
+        # Click the Daily link / button
         for sel in ["a[href*='daily']", "text=Daily", "button:has-text('Daily')"]:
             try:
                 el = await page.query_selector(sel)
                 if el:
-                    logging.info("Found daily selector: %s", sel)
+                    logging.info("Clicking daily selector: %s", sel)
                     await el.click()
                     await page.wait_for_timeout(1000)
                     break
             except Exception as e:
-                logging.debug("Error checking daily selector %s: %s", sel, e, exc_info=True)
-                continue
+                logging.debug("Daily selector %s failed: %s", sel, e)
 
-        # Some flows show an extra play button after the daily dialog appears.
-        # Click it if present (selector provided by user).
+        # Click the play button if it appears
         try:
             play_btn = await page.query_selector("#playButton > p:nth-child(1)")
             if play_btn:
-                logging.info("Found #playButton play element, clicking it")
+                logging.info("Clicking play button")
                 try:
                     await play_btn.click()
-                except Exception as e:
-                    logging.debug("play_btn.click() failed, trying JS click: %s", e, exc_info=True)
-                    # Some elements may require scrolling into view or JS click
+                except Exception:
                     await page.evaluate("el => el.click()", play_btn)
-                # Wait a bit for subsequent UI (cookie popup) to appear
-                await page.wait_for_timeout(5000)
+        except Exception as e:
+            logging.debug("Play button not found: %s", e)
 
-                # Accept cookie consent if dialog appears (some flows show it after play).
+        # Wait for the page to settle and for the cookie banner to appear
+        await page.wait_for_timeout(5000)
+
+        # Accept cookie consent
+        cookie_sel = (
+            "body > div.fc-consent-root > div.fc-dialog-container > "
+            "div.fc-dialog.fc-choice-dialog > div.fc-footer-buttons-container > "
+            "div.fc-footer-buttons > button.fc-button.fc-cta-consent.fc-primary-button > p"
+        )
+        try:
+            cookie_el = await page.query_selector(cookie_sel)
+            if cookie_el:
+                logging.info("Accepting cookie consent")
                 try:
-                    cookie_sel = (
-                        "body > div.fc-consent-root > div.fc-dialog-container > "
-                        "div.fc-dialog.fc-choice-dialog > div.fc-footer-buttons-container > "
-                        "div.fc-footer-buttons > button.fc-button.fc-cta-consent.fc-primary-button > p"
-                    )
-                    cookie_el = await page.query_selector(cookie_sel)
-                    if cookie_el:
-                        logging.info("Found cookie-accept element, clicking it")
-                        try:
-                            await cookie_el.click()
-                        except Exception as e:
-                            logging.debug("cookie_el.click() failed, trying JS click: %s", e, exc_info=True)
-                            await page.evaluate("el => el.click()", cookie_el)
-                        await page.wait_for_timeout(500)
-                except Exception as e:
-                    logging.debug("Cookie accept check failed: %s", e, exc_info=True)
-        except Exception:
-            logging.debug("Play button flow failed", exc_info=True)
+                    await cookie_el.click()
+                except Exception:
+                    await page.evaluate("el => el.click()", cookie_el)
+                await page.wait_for_timeout(500)
+        except Exception as e:
+            logging.debug("Cookie consent not found: %s", e)
 
-        rounds = []
-        for seq in range(1, ROUNDS + 1):
-            logging.info("Collecting round %d", seq)
-            # Wait a short while for content to settle
-            await page.wait_for_timeout(1000)
+        # Read dailyArray — the site populates this before the first round renders
+        logging.info("Waiting for dailyArray in localStorage...")
+        daily_array = await wait_for_daily_array(page)
 
-            image_url = None
-            try:
-                img = await page.query_selector("img")
-                if img:
-                    src = await img.get_attribute("src")
-                    if src:
-                        if src.startswith("//"):
-                            src = "https:" + src
-                        image_url = src
-            except Exception as e:
-                logging.debug("Failed to read image src for seq %d: %s", seq, e, exc_info=True)
-                image_url = None
+        if not daily_array:
+            logging.error("dailyArray not found in localStorage after waiting. Aborting.")
+            await browser.close()
+            return 1
 
-            logging.info("Round %d image URL: %s", seq, image_url)
+        logging.info("Got %d rounds from dailyArray", len(daily_array))
+        for i, entry in enumerate(daily_array):
+            logging.info(
+                "  Round %d: Year=%s Country=%s URL=%.60s",
+                i + 1, entry.get("Year"), entry.get("Country"), entry.get("URL") or "",
+            )
 
-            # After the image and map are shown, select a location on the map.
-            # Wait for the map canvas to be interactive before touching it.
-            await page.wait_for_timeout(1500)
-            try:
-                node = await page.query_selector(".mk-map-node-element")
-                if node:
-                    logging.info("Found map node element at seq %d", seq)
-                    box = await node.bounding_box()
-                    if not box:
-                        logging.warning("No bounding box for map node at seq %d", seq)
-                    else:
-                        # Click at 50% x, 65% y: center horizontally, slightly below center
-                        # vertically to avoid MapKit's compass (top-right) and
-                        # zoom controls (top/bottom right corners).
-                        cx = box["x"] + box["width"] * 0.5
-                        cy = box["y"] + box["height"] * 0.65
+        if dry_run:
+            logging.info("--dry-run: skipping DB write")
+            await browser.close()
+            return 0
 
-                        diag = await page.evaluate(
-                            "([cx, cy]) => { const el = document.elementFromPoint(cx, cy); "
-                            "return el ? el.tagName + '|' + el.id + '|' + el.className : 'null'; }",
-                            [cx, cy]
-                        )
-                        logging.info("Map click target element: %s at (%.0f, %.0f)", diag, cx, cy)
-
-                        # Disable MapKit's built-in scroll/zoom gestures so our click
-                        # is not consumed and zoomed by MapKit before reaching the game layer.
-                        try:
-                            await page.evaluate("""
-                            () => {
-                                if (!window.mapkit || !mapkit.maps || !mapkit.maps.length) return;
-                                mapkit.maps.forEach(m => {
-                                    try {
-                                        Object.defineProperty(m, 'isZoomEnabled',   { get: () => false, configurable: true });
-                                        Object.defineProperty(m, 'isScrollEnabled', { get: () => false, configurable: true });
-                                    } catch(e) {}
-                                });
-                            }
-                            """)
-                            logging.debug("MapKit zoom/scroll disabled")
-                        except Exception as e:
-                            logging.debug("MapKit disable failed: %s", e)
-
-                        # Move the real mouse cursor to the target so MapKit's pointer
-                        # tracking is at our click position before we fire events.
-                        await page.mouse.move(cx, cy)
-                        await page.wait_for_timeout(300)
-
-                        # Dispatch the full pointer+mouse+click event sequence directly
-                        # via JavaScript.  This bypasses Playwright's internal mouse.click()
-                        # which calls mouse.move() again (extra pointermove) and applies a
-                        # delay between down/up that MapKit can misinterpret as a long-press.
-                        click_result = await page.evaluate("""
-                        ([cx, cy]) => {
-                            const el = document.elementFromPoint(cx, cy);
-                            if (!el) return 'no element at point';
-                            const po = { bubbles: true, cancelable: true, clientX: cx, clientY: cy,
-                                         pointerId: 1, pointerType: 'mouse', isPrimary: true };
-                            const mo = { bubbles: true, cancelable: true, clientX: cx, clientY: cy };
-                            el.dispatchEvent(new PointerEvent('pointerover',  po));
-                            el.dispatchEvent(new PointerEvent('pointerenter', po));
-                            el.dispatchEvent(new PointerEvent('pointerdown',  po));
-                            el.dispatchEvent(new MouseEvent('mousedown', mo));
-                            el.dispatchEvent(new PointerEvent('pointerup',    po));
-                            el.dispatchEvent(new MouseEvent('mouseup',   mo));
-                            el.dispatchEvent(new MouseEvent('click',     mo));
-                            return 'ok:' + el.tagName + '|' + el.id + '|' + el.className;
-                        }
-                        """, [cx, cy])
-                        logging.info("Map JS dispatch result: %s", click_result)
-                        await page.wait_for_timeout(500)
-                else:
-                    logging.warning("Map node element not found at seq %d", seq)
-            except Exception as e:
-                logging.exception("Map interaction failed at seq %d", seq)
-
-            # Click the make guess button to submit the guess
-            try:
-                make_btn = await page.query_selector("#makeGuess")
-                if make_btn:
-                    logging.info("Clicking #makeGuess button")
-                    try:
-                        await make_btn.click()
-                    except Exception:
-                        await page.evaluate("el => el.click()", make_btn)
-                else:
-                    # fallback: common text label
-                    make_btn2 = await page.query_selector("button:has-text('Make guess')")
-                    if make_btn2:
-                        await make_btn2.click()
-            except Exception:
-                logging.exception("Failed to click make guess button")
-
-            # Wait briefly for the round reveal to show
-            await page.wait_for_timeout(1500)
-
-            # Attempt to advance the game to next round
-            advanced = False
-            for next_sel in ["button:has-text('Next')", "button:has-text('Continue')", "text=Next"]:
-                try:
-                    n = await page.query_selector(next_sel)
-                    if n:
-                        await n.click()
-                        advanced = True
-                        break
-                except Exception as e:
-                    logging.debug("Error advancing with selector %s: %s", next_sel, e, exc_info=True)
-                    continue
-
-            if not advanced:
-                # try keyboard navigation as a fallback
-                try:
-                    await page.keyboard.press("ArrowRight")
-                except Exception as e:
-                    logging.debug("Keyboard navigation failed: %s", e, exc_info=True)
-
-            rounds.append({
-                "seq": seq,
-                "image_url": image_url,
-                "location_text": None,
-                "lat": None,
-                "lng": None,
-                "year": None,
-                "description": None,
-            })
-
-            await page.wait_for_timeout(500)
-
-        # Save results to DB
         conn = dao.init_db(DB_PATH)
-        game_id = dao.insert_game(conn, date_str)
-        for r in rounds:
+        daily_id = daily_array[0].get("DailyId") if daily_array else None
+        game_id = dao.insert_game(conn, date_str, daily_id=daily_id)
+
+        for seq, entry in enumerate(daily_array, start=1):
+            loc = entry.get("Location") or {}
+            raw_year = entry.get("Year")
+            try:
+                year = int(raw_year) if raw_year else None
+            except (ValueError, TypeError):
+                year = None
+
             dao.insert_screenshot(
                 conn,
-                game_id,
-                r["seq"],
-                r["image_url"],
-                r["location_text"],
-                r["lat"],
-                r["lng"],
-                r["year"],
-                r["description"],
+                game_id=game_id,
+                seq=seq,
+                image_url=entry.get("URL"),
+                location_text=entry.get("Country"),
+                lat=loc.get("lat"),
+                lng=loc.get("lng"),
+                year=year,
+                description=entry.get("Description"),
+                image_id=entry.get("ImageId"),
+                street_view=entry.get("StreetView") or None,
+                license=entry.get("License"),
+                country=entry.get("Country"),
             )
-        conn.close()
+            logging.info("Saved round %d", seq)
 
+        conn.close()
         await browser.close()
+
     logging.info("Collection complete for %s", date_str)
     return 0
 
@@ -270,10 +172,10 @@ async def collect_for_date(date_str: str, headless: bool = HEADLESS_DEFAULT, dry
 def main():
     args = parse_args()
     date_str = args.date or datetime.utcnow().date().isoformat()
-
     res = asyncio.run(collect_for_date(date_str, headless=args.headless, dry_run=args.dry_run))
     raise SystemExit(res)
 
 
 if __name__ == "__main__":
     main()
+

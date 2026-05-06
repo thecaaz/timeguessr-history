@@ -1,5 +1,10 @@
 body { font-family: Arial, sans-serif; margin: 24px; }
-.shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
 .shot { border: 1px solid #ddd; padding: 8px; border-radius: 6px; }
-.shot img { max-width: 100%; height: auto; display: block; }
+.shot img { max-width: 100%; height: auto; display: block; margin-bottom: 8px; }
 .placeholder { background: #f0f0f0; color: #666; height: 180px; display:flex; align-items:center; justify-content:center; }
+.meta { border-collapse: collapse; width: 100%; font-size: .85rem; margin-top: 6px; }
+.meta th { text-align: left; padding: 2px 8px 2px 0; color: #555; width: 6em; vertical-align: top; }
+.meta td { padding: 2px 0; }
+details { margin-top: 8px; }
+details summary { cursor: pointer; color: #0070f3; }

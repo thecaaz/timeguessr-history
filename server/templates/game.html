@@ -18,10 +18,33 @@
           {% else %}
             <div class="placeholder">No image URL available</div>
           {% endif %}
-          <p><strong>Location:</strong> {{ s['location_text'] or '—' }}</p>
-          <p><strong>Coords:</strong> {{ s['lat'] or '—' }}, {{ s['lng'] or '—' }}</p>
-          <p><strong>Year:</strong> {{ s['year'] or '—' }}</p>
-          <p><strong>Description:</strong> {{ s['description'] or '—' }}</p>
+
+          <table class="meta">
+            <tr><th>Year</th><td>{{ s['year'] or '—' }}</td></tr>
+            <tr><th>Country</th><td>{{ s['country'] or s['location_text'] or '—' }}</td></tr>
+            <tr><th>Coords</th><td>
+              {% if s['lat'] and s['lng'] %}
+                <a href="https://www.google.com/maps?q={{ s['lat'] }},{{ s['lng'] }}" target="_blank" rel="noopener">
+                  {{ '%.5f'|format(s['lat']) }}, {{ '%.5f'|format(s['lng']) }}
+                </a>
+              {% else %}—{% endif %}
+            </td></tr>
+            <tr><th>Description</th><td>{{ s['description'] or '—' }}</td></tr>
+            <tr><th>License</th><td>{{ s['license'] or '—' }}</td></tr>
+          </table>
+
+          {% if s['street_view'] %}
+            <details>
+              <summary>Street View</summary>
+              <iframe
+                src="{{ s['street_view'] }}"
+                width="600" height="300"
+                style="border:0; margin-top:.5rem"
+                allowfullscreen loading="lazy"
+                referrerpolicy="no-referrer-when-downgrade">
+              </iframe>
+            </details>
+          {% endif %}
         </div>
       {% else %}
         <p>No screenshots recorded for this game.</p>
