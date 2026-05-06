@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+db/games.sqlite
+.env
+.DS_Store
+.vscode/
+.python-version
+.idea/
+*.log
+server/static/uploads/

@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Game {{ date }} — timeguessr-history</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <a href="/">← Back</a>
+    <h1>Game {{ date }}</h1>
+
+    <div class="shots">
+      {% for s in screenshots %}
+        <div class="shot">
+          <h3>Round {{ s['seq'] }}</h3>
+          {% if s['image_url'] %}
+            <img src="{{ s['image_url'] }}" alt="round {{ s['seq'] }}" />
+          {% else %}
+            <div class="placeholder">No image URL available</div>
+          {% endif %}
+          <p><strong>Location:</strong> {{ s['location_text'] or '—' }}</p>
+          <p><strong>Coords:</strong> {{ s['lat'] or '—' }}, {{ s['lng'] or '—' }}</p>
+          <p><strong>Year:</strong> {{ s['year'] or '—' }}</p>
+          <p><strong>Description:</strong> {{ s['description'] or '—' }}</p>
+        </div>
+      {% else %}
+        <p>No screenshots recorded for this game.</p>
+      {% endfor %}
+    </div>
+  </body>
+</html>

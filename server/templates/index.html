@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>timeguessr-history</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <h1>Collected TimeGuessr Games</h1>
+    <ul>
+      {% for g in games %}
+      <li><a href="/game/{{ g['date'] }}">{{ g['date'] }}</a> — collected at {{ g['created_at'] }}</li>
+      {% else %}
+      <li>No games collected yet.</li>
+      {% endfor %}
+    </ul>
+  </body>
+</html>
