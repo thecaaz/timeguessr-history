@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["CI Build"]
+    types: [completed]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  docker:
+    name: Build & push Docker image
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags
+
+      - name: Ensure branch head and tags
+        run: |
+          git fetch origin main --tags
+          git checkout origin/main
+          git reset --hard origin/main
+
+      - name: Get release version
+        id: version
+        run: |
+          TAG=$(git describe --tags --abbrev=0 || echo "v0.0.0")
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/timeguessr-history:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/timeguessr-history:${{ steps.version.outputs.version }}
