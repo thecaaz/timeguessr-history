@@ -55,3 +55,35 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/timeguessr-history:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/timeguessr-history:${{ steps.version.outputs.version }}
+
+      - name: Create and push tag
+        id: tag
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          LATEST=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LATEST" ]; then
+            TAG="v0.1.0"
+          else
+            V=${LATEST#v}
+            IFS='.' read -r MA MI PA <<< "$V" || true
+            if [[ "$MA" =~ ^[0-9]+$ && "$MI" =~ ^[0-9]+$ && "$PA" =~ ^[0-9]+$ ]]; then
+              PA=$((PA + 1))
+              TAG="v${MA}.${MI}.${PA}"
+            else
+              TAG="v$(date -u +'%Y%m%d%H%M%S')"
+            fi
+          fi
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          release_name: ${{ steps.tag.outputs.tag }}
+          body: "Release ${{ steps.tag.outputs.tag }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
