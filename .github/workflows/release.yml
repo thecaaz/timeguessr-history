@@ -80,6 +80,54 @@ jobs:
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
 
+      - name: Generate release notes
+        id: gen_notes
+        run: |
+          set -e
+          TAG=${{ steps.tag.outputs.tag }}
+          PREV_TAG=$(git tag --sort=-creatordate | sed -n '2p' || true)
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="$PREV_TAG..HEAD"
+          else
+            RANGE=""
+          fi
+
+          # Collect commit subjects in range
+          if [ -n "$RANGE" ]; then
+            SUBJECTS=$(git log $RANGE --pretty=format:%s)
+            ALL_COMMITS=$(git log $RANGE --pretty=format:'- %s (%h)')
+          else
+            SUBJECTS=$(git log --pretty=format:%s)
+            ALL_COMMITS=$(git log --pretty=format:'- %s (%h)')
+          fi
+
+          FEATS=$(echo "$SUBJECTS" | grep -E '^feat(\([^)]+\))?: ' || true)
+          FIXES=$(echo "$SUBJECTS" | grep -E '^fix(\([^)]+\))?: ' || true)
+
+          FEAT_BODY=$(echo "$FEATS" | sed -E 's/^feat(\([^)]+\))?: //g' | sed -E 's/^/- /' || true)
+          FIX_BODY=$(echo "$FIXES" | sed -E 's/^fix(\([^)]+\))?: //g' | sed -E 's/^/- /' || true)
+
+          {
+            echo "## Changes in $TAG"
+            echo
+            if [ -n "$FEAT_BODY" ]; then
+              echo "### Features"
+              echo "$FEAT_BODY"
+              echo
+            fi
+            if [ -n "$FIX_BODY" ]; then
+              echo "### Fixes"
+              echo "$FIX_BODY"
+              echo
+            fi
+            echo "### Commits"
+            echo "$ALL_COMMITS"
+          } > release_notes.md
+
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          cat release_notes.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create GitHub release
         uses: actions/create-release@v1
         with:
