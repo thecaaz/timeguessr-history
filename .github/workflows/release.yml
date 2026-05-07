@@ -68,7 +68,6 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/timeguessr-history:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/timeguessr-history:${{ steps.tag.outputs.version }}
             ${{ secrets.DOCKERHUB_USERNAME }}/timeguessr-history:${{ steps.tag.outputs.tag }}
 
       - name: Push Git tag
