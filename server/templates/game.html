@@ -1,54 +1,169 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Game {{ date }} — timeguessr-history</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Game {{ date }} — TimeGuessr History</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script>
+      /* Restore theme preference */
+      (function () {
+        const saved = localStorage.getItem('theme');
+        if (saved) {
+          document.documentElement.setAttribute('data-theme', saved);
+        } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
   </head>
   <body>
-    <a href="/">← Back</a>
-    <h1>Game {{ date }}</h1>
 
-    <div class="shots">
-      {% for s in screenshots %}
-        <div class="shot">
-          <h3>Round {{ s['seq'] }}</h3>
-          {% if s['image_url'] %}
-            <img src="{{ s['image_url'] }}" alt="round {{ s['seq'] }}" />
-          {% else %}
-            <div class="placeholder">No image URL available</div>
-          {% endif %}
+    <!-- Top App Bar -->
+    <header class="top-app-bar">
+      <div class="top-app-bar__title">
+        <span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 8px;">travel_explore</span>
+        TimeGuessr History
+      </div>
+      <div class="top-app-bar__actions">
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle theme">
+          <span class="material-symbols-outlined" id="themeIcon">dark_mode</span>
+        </button>
+      </div>
+    </header>
 
-          <table class="meta">
-            <tr><th>Year</th><td>{{ s['year'] or '—' }}</td></tr>
-            <tr><th>Country</th><td>{{ s['country'] or s['location_text'] or '—' }}</td></tr>
-            <tr><th>Coords</th><td>
-              {% if s['lat'] and s['lng'] %}
-                <a href="https://www.google.com/maps?q={{ s['lat'] }},{{ s['lng'] }}" target="_blank" rel="noopener">
-                  {{ '%.5f'|format(s['lat']) }}, {{ '%.5f'|format(s['lng']) }}
-                </a>
-              {% else %}—{% endif %}
-            </td></tr>
-            <tr><th>Description</th><td>{{ s['description'] or '—' }}</td></tr>
-            <tr><th>License</th><td>{{ s['license'] or '—' }}</td></tr>
-          </table>
+    <!-- Navigation Bar -->
+    <nav class="nav-bar">
+      <a href="/" class="nav-button">
+        <span class="material-symbols-outlined nav-button__icon">arrow_back</span>
+        Back to games
+      </a>
+    </nav>
 
-          {% if s['street_view'] %}
-            <details>
-              <summary>Street View</summary>
-              <iframe
-                src="{{ s['street_view'] }}"
-                width="600" height="300"
-                style="border:0; margin-top:.5rem"
-                allowfullscreen loading="lazy"
-                referrerpolicy="no-referrer-when-downgrade">
-              </iframe>
+    <!-- Page Content -->
+    <main class="page">
+      <h1 class="page-title">
+        <span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 8px;">calendar_month</span>
+        Game {{ date }}
+      </h1>
+
+      {% if screenshots %}
+      <div class="cards-grid">
+        {% for s in screenshots %}
+        <article class="card">
+          <!-- Round Badge -->
+          <div style="padding: var(--spacing-md) var(--spacing-md) 0;">
+            <span class="chip chip--primary">
+              <span class="material-symbols-outlined" style="font-size: 0.875rem;">label</span>
+              Round {{ s['seq'] }}
+            </span>
+          </div>
+
+          <!-- Image -->
+          <div style="padding: var(--spacing-sm) var(--spacing-md) 0;">
+            {% if s['image_url'] %}
+              <img class="card__image" src="{{ s['image_url'] }}" alt="Round {{ s['seq'] }} screenshot" loading="lazy" />
+            {% else %}
+              <div class="placeholder">
+                <span class="material-symbols-outlined" style="font-size: 2rem; margin-right: 8px;">image_not_supported</span>
+                No image available
+              </div>
+            {% endif %}
+          </div>
+
+          <!-- Metadata -->
+          <div class="card__content" style="padding-top: var(--spacing-sm);">
+            <ul class="meta-list">
+              <li class="meta-list__item">
+                <span class="meta-list__label">Year</span>
+                <span class="meta-list__value">{{ s['year'] or '—' }}</span>
+              </li>
+              <li class="meta-list__item">
+                <span class="meta-list__label">Country</span>
+                <span class="meta-list__value">{{ s['country'] or s['location_text'] or '—' }}</span>
+              </li>
+              <li class="meta-list__item">
+                <span class="meta-list__label">Coords</span>
+                <span class="meta-list__value">
+                  {% if s['lat'] and s['lng'] %}
+                    <a href="https://www.google.com/maps?q={{ s['lat'] }},{{ s['lng'] }}" target="_blank" rel="noopener">
+                      <span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: middle;">location_on</span>
+                      {{ '%.5f'|format(s['lat']) }}, {{ '%.5f'|format(s['lng']) }}
+                    </a>
+                  {% else %}—{% endif %}
+                </span>
+              </li>
+              <li class="meta-list__item">
+                <span class="meta-list__label">Description</span>
+                <span class="meta-list__value">{{ s['description'] or '—' }}</span>
+              </li>
+              <li class="meta-list__item">
+                <span class="meta-list__label">License</span>
+                <span class="meta-list__value">{{ s['license'] or '—' }}</span>
+              </li>
+            </ul>
+
+            <!-- Street View Expansion Panel -->
+            {% if s['street_view'] %}
+            <details class="expansion-panel">
+              <summary class="expansion-panel__summary">
+                <span style="display: inline-flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined" style="font-size: 1rem;">streetview</span>
+                  Street View
+                </span>
+                <span class="material-symbols-outlined expansion-panel__icon">expand_more</span>
+              </summary>
+              <div class="expansion-panel__content">
+                <iframe
+                  src="{{ s['street_view'] }}"
+                  loading="lazy"
+                  allowfullscreen
+                  referrerpolicy="no-referrer-when-downgrade"
+                  title="Street View for Round {{ s['seq'] }}"
+                ></iframe>
+              </div>
             </details>
-          {% endif %}
-        </div>
+            {% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
       {% else %}
-        <p>No screenshots recorded for this game.</p>
-      {% endfor %}
-    </div>
+      <div class="empty-state">
+        <span class="material-symbols-outlined empty-state__icon">photo_library</span>
+        <div class="empty-state__title">No screenshots</div>
+        <div class="empty-state__description">
+          No screenshots were recorded for this game.
+        </div>
+      </div>
+      {% endif %}
+    </main>
+
+    <!-- Theme Toggle Script -->
+    <script>
+      (function () {
+        const toggle = document.getElementById('themeToggle');
+        const icon = document.getElementById('themeIcon');
+        if (!toggle || !icon) return;
+
+        function updateIcon() {
+          const theme = document.documentElement.getAttribute('data-theme');
+          icon.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
+        }
+        updateIcon();
+
+        toggle.addEventListener('click', function () {
+          const current = document.documentElement.getAttribute('data-theme');
+          const next = current === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', next);
+          localStorage.setItem('theme', next);
+          updateIcon();
+        });
+      })();
+    </script>
   </body>
 </html>

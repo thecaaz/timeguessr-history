@@ -1,18 +1,94 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>timeguessr-history</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TimeGuessr History</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script>
+      /* Restore theme preference */
+      (function () {
+        const saved = localStorage.getItem('theme');
+        if (saved) {
+          document.documentElement.setAttribute('data-theme', saved);
+        } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
   </head>
   <body>
-    <h1>Collected TimeGuessr Games</h1>
-    <ul>
-      {% for g in games %}
-      <li><a href="/game/{{ g['date'] }}">{{ g['date'] }}</a> — collected at {{ g['created_at'] }}</li>
+
+    <!-- Top App Bar -->
+    <header class="top-app-bar">
+      <div class="top-app-bar__title">
+        <span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 8px;">travel_explore</span>
+        TimeGuessr History
+      </div>
+      <div class="top-app-bar__actions">
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle theme">
+          <span class="material-symbols-outlined" id="themeIcon">dark_mode</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Page Content -->
+    <main class="page">
+      <h1 class="page-title">Collected Games</h1>
+
+      {% if games %}
+      <div class="cards-grid">
+        {% for g in games %}
+        <a class="game-card" href="/game/{{ g['date'] }}">
+          <div class="card">
+            <div class="card__content">
+              <span class="material-symbols-outlined game-card__icon">calendar_month</span>
+              <div class="game-card__info">
+                <div class="game-card__date">{{ g['date'] }}</div>
+                <div class="game-card__collected">Collected at {{ g['created_at'] }}</div>
+              </div>
+              <span class="material-symbols-outlined" style="color: var(--md-sys-color-outline);">arrow_forward</span>
+            </div>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
       {% else %}
-      <li>No games collected yet.</li>
-      {% endfor %}
-    </ul>
+      <div class="empty-state">
+        <span class="material-symbols-outlined empty-state__icon">image_not_supported</span>
+        <div class="empty-state__title">No games collected yet</div>
+        <div class="empty-state__description">
+          Once games are collected from TimeGuessr, they will appear here.
+        </div>
+      </div>
+      {% endif %}
+    </main>
+
+    <!-- Theme Toggle Script -->
+    <script>
+      (function () {
+        const toggle = document.getElementById('themeToggle');
+        const icon = document.getElementById('themeIcon');
+        if (!toggle || !icon) return;
+
+        function updateIcon() {
+          const theme = document.documentElement.getAttribute('data-theme');
+          icon.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
+        }
+        updateIcon();
+
+        toggle.addEventListener('click', function () {
+          const current = document.documentElement.getAttribute('data-theme');
+          const next = current === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', next);
+          localStorage.setItem('theme', next);
+          updateIcon();
+        });
+      })();
+    </script>
   </body>
 </html>
