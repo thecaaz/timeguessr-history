@@ -10,7 +10,12 @@ services:
 
   collector:
     build: .
-    command: ["/bin/sh", "-c", "echo '10 7 * * * cd /app && python3 collector/run.py --headless >> /app/logs/collector.log 2>&1' | crontab - && crond -f -l 2"]
+    command:
+      - /bin/sh
+      - -c
+      - |
+        printf 'SHELL=/bin/sh\nPATH=/usr/local/bin:/usr/bin:/bin\n10 7 * * * cd /app && python3 collector/run.py --headless >> /app/logs/collector.log 2>&1\n' | crontab -
+        cron -f
     volumes:
       - collector_db_data:/app/db
       - ./logs:/app/logs
