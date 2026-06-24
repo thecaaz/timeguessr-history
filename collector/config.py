@@ -1,4 +1,4 @@
-BASE_URL = "https://timeguessr.com/"
+BASE_URL = "https://timeguessr.com/play?mode=daily"
 ROUNDS = 5
 DB_PATH = "db/games.sqlite"
 HEADLESS_DEFAULT = True

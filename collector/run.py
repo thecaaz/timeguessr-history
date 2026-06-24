@@ -12,6 +12,8 @@ import logging
 import sys
 from pathlib import Path
 from datetime import datetime
+import re
+import demjson3
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -34,7 +36,7 @@ def parse_args(argv=None):
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 
-async def wait_for_daily_array(page) -> list:
+async def wait_for_daily_array(page) -> list[dict]:
     """Poll localStorage every 500 ms until dailyArray contains objects (up to ~20 s)."""
     for _ in range(40):
         result = await page.evaluate("""
@@ -67,30 +69,6 @@ async def collect_for_date(date_str: str, headless: bool = HEADLESS_DEFAULT, dry
         logging.info("Opening %s", BASE_URL)
         await page.goto(BASE_URL, timeout=60000)
 
-        # Click the Daily link / button
-        for sel in ["a[href*='daily']", "text=Daily", "button:has-text('Daily')"]:
-            try:
-                el = await page.query_selector(sel)
-                if el:
-                    logging.info("Clicking daily selector: %s", sel)
-                    await el.click()
-                    await page.wait_for_timeout(1000)
-                    break
-            except Exception as e:
-                logging.debug("Daily selector %s failed: %s", sel, e)
-
-        # Click the play button if it appears
-        try:
-            play_btn = await page.query_selector("#playButton > p:nth-child(1)")
-            if play_btn:
-                logging.info("Clicking play button")
-                try:
-                    await play_btn.click()
-                except Exception:
-                    await page.evaluate("el => el.click()", play_btn)
-        except Exception as e:
-            logging.debug("Play button not found: %s", e)
-
         # Wait for the page to settle and for the cookie banner to appear
         await page.wait_for_timeout(5000)
 
@@ -113,16 +91,36 @@ async def collect_for_date(date_str: str, headless: bool = HEADLESS_DEFAULT, dry
             logging.debug("Cookie consent not found: %s", e)
 
         # Read dailyArray — the site populates this before the first round renders
-        logging.info("Waiting for dailyArray in localStorage...")
-        daily_array = await wait_for_daily_array(page)
+        content = await page.content()
+        logging.info("Page content length: %d", len(content))
+        daily_array_match = re.search(r'data: (\[.*\])', content)
+        
+        
+        # Get second group of regex match
+        if daily_array_match:
+            daily_array_str = daily_array_match.group(1)
+            try:
+                daily_array = demjson3.decode(daily_array_str)
+                logging.info("Daily array:", daily_array)
+            except Exception as e:
+                logging.error("Failed to parse dailyArray from page content: %s", e)
+                daily_array = []
 
         if not daily_array:
             logging.error("dailyArray not found in localStorage after waiting. Aborting.")
             await browser.close()
             return 1
 
-        logging.info("Got %d rounds from dailyArray", len(daily_array))
-        for i, entry in enumerate(daily_array):
+        # Extract playArray from the new wrapper structure
+        play_array: list[dict] = []
+        for item in daily_array:
+            data = item.get("data")
+            if isinstance(data, dict) and "playArray" in data:
+                play_array = [e for e in data["playArray"] if isinstance(e, dict)]
+                break
+
+        logging.info("Got %d rounds from dailyArray", len(play_array))
+        for i, entry in enumerate(play_array):
             logging.info(
                 "  Round %d: Year=%s Country=%s URL=%.60s",
                 i + 1, entry.get("Year"), entry.get("Country"), entry.get("URL") or "",
@@ -134,16 +132,22 @@ async def collect_for_date(date_str: str, headless: bool = HEADLESS_DEFAULT, dry
             return 0
 
         conn = dao.init_db(DB_PATH)
-        daily_id = daily_array[0].get("DailyId") if daily_array else None
+        daily_id = play_array[0].get("DailyId") if play_array else None
         game_id = dao.insert_game(conn, date_str, daily_id=daily_id)
 
-        for seq, entry in enumerate(daily_array, start=1):
+        for seq, entry in enumerate(play_array, start=1):
             loc = entry.get("Location") or {}
             raw_year = entry.get("Year")
             try:
                 year = int(raw_year) if raw_year else None
             except (ValueError, TypeError):
                 year = None
+            lat = loc.get("lat")
+            lng = loc.get("lng")
+            if lat is not None:
+                lat = float(lat)
+            if lng is not None:
+                lng = float(lng)
 
             dao.insert_screenshot(
                 conn,
@@ -151,8 +155,8 @@ async def collect_for_date(date_str: str, headless: bool = HEADLESS_DEFAULT, dry
                 seq=seq,
                 image_url=entry.get("URL"),
                 location_text=entry.get("Country"),
-                lat=loc.get("lat"),
-                lng=loc.get("lng"),
+                lat=lat,
+                lng=lng,
                 year=year,
                 description=entry.get("Description"),
                 image_id=entry.get("ImageId"),
